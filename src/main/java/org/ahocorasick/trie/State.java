@@ -43,6 +43,9 @@ public class State {
     /** whenever this state is reached, it will emit the matches keywords for future reference */
     private Set<String> emits = null;
 
+    /** if this is a synonym or alternative name for a root keyword, then store it here along with a set of tags associated with it */
+    private Map<String, Set<String>> rootKeywords = null;
+
     public State() {
         this(0);
     }
@@ -114,4 +117,24 @@ public class State {
         return this.success.keySet();
     }
 
+    public Map<String, Set<String>> getRootKeywords() {
+        return rootKeywords;
+    }
+
+    public void addRootKeyword(String rootKeyword, String keywordTag) {
+        if (rootKeyword != null && keywordTag != null) {
+            if (rootKeywords == null) {
+                rootKeywords = new HashMap<>();
+            }
+
+            Set<String> tags = rootKeywords.get(rootKeyword);
+
+            if (tags == null) {
+                tags = new HashSet<>();
+                rootKeywords.put(rootKeyword, tags);
+            }
+
+            tags.add(keywordTag);
+        }
+    }
 }

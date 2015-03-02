@@ -5,9 +5,15 @@ import org.ahocorasick.interval.Intervalable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
+
+import uk.ac.shef.wit.simmetrics.similaritymetrics.JaroWinkler;
 
 /**
  *
@@ -20,11 +26,14 @@ public class Trie {
 
     private State rootState;
 
+    private JaroWinkler jaroWinklerSimilarity;
+
     private boolean failureStatesConstructed = false;
 
     public Trie(TrieConfig trieConfig) {
         this.trieConfig = trieConfig;
         this.rootState = new State();
+        jaroWinklerSimilarity = new JaroWinkler();
     }
 
     public Trie() {
@@ -55,6 +64,20 @@ public class Trie {
             currentState = currentState.addState(character);
         }
         currentState.addEmit(keyword);
+    }
+
+    public void addKeyword(String keyword, String rootKeyword, String tag) {
+        if (keyword == null || keyword.length() == 0) {
+            return;
+        }
+        State currentState = this.rootState;
+        for (Character character : keyword.toCharArray()) {
+            currentState = currentState.addState(Character.toLowerCase(character));
+        }
+        currentState.addEmit(keyword);
+
+        // this is the leaf , add the root keyword
+        currentState.addRootKeyword(rootKeyword, tag);
     }
 
     public Collection<Token> tokenize(String text) {
@@ -111,6 +134,47 @@ public class Trie {
         }
 
         return collectedEmits;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Set<String>> lookup(String word, float similarity) {
+        checkForConstructedFailureStates();
+
+        int position = 0;
+        State currentState = this.rootState;
+        Map<String, Set<String>> rootKeywords = new HashMap<>();
+        StringBuffer transitions = new StringBuffer();
+
+        for (Character character : word.toCharArray()) {
+            if (trieConfig.isCaseInsensitive()) {
+                character = Character.toLowerCase(character);
+            }
+            transitions.append(character);
+
+            currentState = getState(currentState, character);
+
+            if (currentState.getRootKeywords() != null) {
+                double sim = jaroWinklerSimilarity.getSimilarity(transitions.toString(), word);
+                if (sim >= similarity) {
+
+                    for (String key : currentState.getRootKeywords().keySet()) {
+
+                        Set<String> tags = currentState.getRootKeywords().get(key);
+                        Set<String> existingTags = null;
+
+                        if ((existingTags = rootKeywords.get(key)) != null) {
+                            existingTags.addAll(tags);
+                        } else {
+                            existingTags = new HashSet<>(tags);
+                            rootKeywords.put(key, existingTags);
+                        }
+                    }
+
+                }
+            }
+        }
+
+        return rootKeywords;
     }
 
     private void removePartialMatches(String searchText, List<Emit> collectedEmits) {
