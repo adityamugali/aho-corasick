@@ -137,7 +137,7 @@ public class Trie {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Set<String>> lookup(String word, float similarity) {
+    public synchronized Map<String, Set<String>> lookup(String word, float similarity) {
         checkForConstructedFailureStates();
 
         int position = 0;
