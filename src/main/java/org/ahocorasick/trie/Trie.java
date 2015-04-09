@@ -1,8 +1,5 @@
 package org.ahocorasick.trie;
 
-import org.ahocorasick.interval.IntervalTree;
-import org.ahocorasick.interval.Intervalable;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -13,11 +10,12 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.LinkedBlockingDeque;
 
-import uk.ac.shef.wit.simmetrics.similaritymetrics.JaroWinkler;
+import org.ahocorasick.interval.IntervalTree;
+import org.ahocorasick.interval.Intervalable;
 
 /**
- *
  * Based on the Aho-Corasick white paper, Bell technologies: ftp://163.13.200.222/assistant/bearhero/prog/%A8%E4%A5%A6/ac_bm.pdf
+ *
  * @author Robert Bor
  */
 public class Trie {
@@ -26,14 +24,11 @@ public class Trie {
 
     private State rootState;
 
-    private JaroWinkler jaroWinklerSimilarity;
-
     private boolean failureStatesConstructed = false;
 
     public Trie(TrieConfig trieConfig) {
         this.trieConfig = trieConfig;
         this.rootState = new State();
-        jaroWinklerSimilarity = new JaroWinkler();
     }
 
     public Trie() {
@@ -101,11 +96,11 @@ public class Trie {
     }
 
     private Token createFragment(Emit emit, String text, int lastCollectedPosition) {
-        return new FragmentToken(text.substring(lastCollectedPosition+1, emit == null ? text.length() : emit.getStart()));
+        return new FragmentToken(text.substring(lastCollectedPosition + 1, emit == null ? text.length() : emit.getStart()));
     }
 
     private Token createMatch(Emit emit, String text) {
-        return new MatchToken(text.substring(emit.getStart(), emit.getEnd()+1), emit);
+        return new MatchToken(text.substring(emit.getStart(), emit.getEnd() + 1), emit);
     }
 
     @SuppressWarnings("unchecked")
@@ -129,7 +124,7 @@ public class Trie {
         }
 
         if (!trieConfig.isAllowOverlaps()) {
-            IntervalTree intervalTree = new IntervalTree((List<Intervalable>)(List<?>)collectedEmits);
+            IntervalTree intervalTree = new IntervalTree((List<Intervalable>) (List<?>) collectedEmits);
             intervalTree.removeOverlaps((List<Intervalable>) (List<?>) collectedEmits);
         }
 
@@ -137,40 +132,48 @@ public class Trie {
     }
 
     @SuppressWarnings("unchecked")
-    public synchronized Map<String, Set<String>> lookup(String word, float similarity) {
+    public synchronized Map<String, Set<String>> lookup(String text) {
         checkForConstructedFailureStates();
 
         int position = 0;
         State currentState = this.rootState;
-        Map<String, Set<String>> rootKeywords = new HashMap<>();
+        List<Emit> collectedEmits = new ArrayList<Emit>();
+        Map<Emit, Map<String, Set<String>>> emitRootKeywords = new HashMap<>();
         StringBuffer transitions = new StringBuffer();
 
-        for (Character character : word.toCharArray()) {
+        for (Character character : text.toCharArray()) {
             if (trieConfig.isCaseInsensitive()) {
                 character = Character.toLowerCase(character);
             }
-            transitions.append(character);
-
             currentState = getState(currentState, character);
+            storeEmits(position, currentState, collectedEmits, emitRootKeywords);
+            position++;
 
-            if (currentState.getRootKeywords() != null) {
-                double sim = jaroWinklerSimilarity.getSimilarity(transitions.toString(), word);
-                if (sim >= similarity) {
+            // keep track on transitions
+            transitions.append(character);
+        }
 
-                    for (String key : currentState.getRootKeywords().keySet()) {
+        if (trieConfig.isOnlyWholeWords()) {
+            removePartialMatches(text, collectedEmits);
+        }
 
-                        Set<String> tags = currentState.getRootKeywords().get(key);
-                        Set<String> existingTags = null;
+        if (!trieConfig.isAllowOverlaps()) {
+            IntervalTree intervalTree = new IntervalTree((List<Intervalable>) (List<?>) collectedEmits);
+            intervalTree.removeOverlaps((List<Intervalable>) (List<?>) collectedEmits);
+        }
 
-                        if ((existingTags = rootKeywords.get(key)) != null) {
-                            existingTags.addAll(tags);
-                        } else {
-                            existingTags = new HashSet<>(tags);
-                            rootKeywords.put(key, existingTags);
-                        }
-                    }
+        Map<String, Set<String>> rootKeywords = new HashMap<>();
 
+        // the collected emits are now filtered
+        for (Emit emit : collectedEmits) {
+            Map<String, Set<String>> map = emitRootKeywords.get(emit);
+
+            for (String root : map.keySet()) {
+                Set<String> tags = rootKeywords.get(root);
+                if (tags == null) {
+                    rootKeywords.put(root, (tags = new HashSet<>()));
                 }
+                tags.addAll(map.get(root));
             }
         }
 
@@ -243,9 +246,36 @@ public class Trie {
         Collection<String> emits = currentState.emit();
         if (emits != null && !emits.isEmpty()) {
             for (String emit : emits) {
-                collectedEmits.add(new Emit(position-emit.length()+1, position, emit));
+                collectedEmits.add(new Emit(position - emit.length() + 1, position, emit));
             }
         }
     }
 
+    private void storeEmits(int position, State currentState, List<Emit> collectedEmits, Map<Emit, Map<String, Set<String>>> emitRootKeywords) {
+        Collection<String> emits = currentState.emit();
+        if (emits != null && !emits.isEmpty()) {
+            for (String emit : emits) {
+                Emit emitObj = new Emit(position - emit.length() + 1, position, emit);
+                collectedEmits.add(emitObj);
+
+                Map<String, Set<String>> rootKeywords = emitRootKeywords.get(emitObj);
+                if (rootKeywords == null) {
+                    emitRootKeywords.put(emitObj, (rootKeywords = new HashMap<>()));
+                }
+
+                for (String rootKeyword : currentState.getRootKeywords().keySet()) {
+                    // multiple tags associated with a root keyword
+                    Set<String> tags = currentState.getRootKeywords().get(rootKeyword);
+                    Set<String> existingTags = null;
+
+                    if ((existingTags = rootKeywords.get(rootKeyword)) != null) {
+                        existingTags.addAll(tags);
+                    } else {
+                        existingTags = new HashSet<>(tags);
+                        rootKeywords.put(rootKeyword, existingTags);
+                    }
+                }
+            }
+        }
+    }
 }
