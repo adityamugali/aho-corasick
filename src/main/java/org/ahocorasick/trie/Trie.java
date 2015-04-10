@@ -263,16 +263,20 @@ public class Trie {
                     emitRootKeywords.put(emitObj, (rootKeywords = new HashMap<>()));
                 }
 
-                for (String rootKeyword : currentState.getRootKeywords().keySet()) {
-                    // multiple tags associated with a root keyword
-                    Set<String> tags = currentState.getRootKeywords().get(rootKeyword);
-                    Set<String> existingTags = null;
+                if (currentState.getRootKeywords() != null) {
+                    for (String rootKeyword : currentState.getRootKeywords().keySet()) {
+                        // multiple tags associated with a root keyword
+                        Set<String> tags = currentState.getRootKeywords().get(rootKeyword);
+                        Set<String> existingTags = null;
 
-                    if ((existingTags = rootKeywords.get(rootKeyword)) != null) {
-                        existingTags.addAll(tags);
-                    } else {
-                        existingTags = new HashSet<>(tags);
-                        rootKeywords.put(rootKeyword, existingTags);
+                        if (tags != null) {
+                            if ((existingTags = rootKeywords.get(rootKeyword)) != null) {
+                                existingTags.addAll(tags);
+                            } else {
+                                existingTags = new HashSet<>(tags);
+                                rootKeywords.put(rootKeyword, existingTags);
+                            }
+                        }
                     }
                 }
             }
